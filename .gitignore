@@ -1,0 +1,23 @@
+# Dependencies / build (for Phase 1+)
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Local environment
+.env
+.env.*
+*.local
+*.secret
+*.token
+
+# Local agent state
+.claude/settings.local.json
+.claude/**/memory/
+.claude/**/logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
