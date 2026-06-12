@@ -95,7 +95,7 @@ Claude Code ──(MCP / JSON-RPC over stdio)── codex-cli-mcp-bridge (TypeSc
 - Claude 側と Codex 側の usage limit を相互監視する仕組み（どちらに作業を寄せるかの判断材料）
 - ~~Windows パス（バックスラッシュ・ドライブレター）と POSIX パスの変換境界~~ → §7 で確定
 
-## 7. Phase 1 実機確定事項（codex-cli 0.118.0 で検証）
+## 7. Phase 1 実機確定事項（codex-cli 0.139.0 で実走検証）
 
 ### 非対話モードの呼び出し（確定）
 
@@ -123,3 +123,18 @@ codex exec --sandbox read-only --ephemeral --color never --json --skip-git-repo-
 ### 認証（確定）
 
 - `codex login status` で確認。bridge は認証情報を一切保持・転送しない（設計どおり）
+
+### 実走検証の結果と運用知見（2026-06-12）
+
+- **成功経路**: fixture HANDOFF を入力に codex_plan を実走し、4セクション構成の計画のみが返却され
+  （diff・コードなし）、実行前後の `git status --porcelain` が完全一致（ファイル変更ゼロ）
+- **JSONL 形式の実測**: `{"type":"item.completed","item":{"type":"agent_message","text":...}}` と
+  `turn.completed`（usage 付き）。エラーは `{"type":"error","message":...}` / `turn.failed` として
+  **stdout** に出る（stderr は空のことが多い）— bridge はこれをエラーメッセージに伝搬する
+- **exec のバナーで `approval: never` を確認** — 非対話モードでは承認プロンプト自体が発生しない
+- **クライアントバージョンの罠**: 古いクライアント（0.118.0）はバックエンドに拒否され、
+  全モデルで `The '<model>' model is not supported when using Codex with a ChatGPT account` (400)
+  が返る。**プランの問題に見えるが実態はクライアントが古い**ことがある。
+  このエラーを見たらまず `npm install -g @openai/codex@latest` を試すこと
+- 既知の注意点: Codex がリポジトリ内の日本語ドキュメントを mojibake と認識する場合がある
+  （Codex 側のエンコーディング解釈。bridge の責任範囲外だが、日本語 HANDOFF の精度に影響しうる）

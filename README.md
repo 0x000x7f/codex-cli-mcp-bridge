@@ -31,8 +31,8 @@ Claude Code から Codex CLI を MCP ツールとして呼び出し、
 
 ## Roadmap
 
-- [x] Phase 0: 設計・セキュリティモデル・既存方式との比較（このリポジトリの現状）
-- [ ] Phase 1: `codex_plan`（読み取り専用ツール）の実装と検証
+- [x] Phase 0: 設計・セキュリティモデル・既存方式との比較
+- [x] Phase 1: `codex_plan`（読み取り専用ツール）の実装と検証 — 実走前後で working tree 不変を確認済み
 - [ ] Phase 2: `codex_propose_patch`（diff 提案のみ）
 - [ ] Phase 3: `codex_apply`（承認ゲート付き適用）
 - [ ] クロスエージェント自動レビューループ
