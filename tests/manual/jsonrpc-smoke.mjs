@@ -57,10 +57,12 @@ console.log("tools:", tools.tools.map((t) => t.name).join(", "));
 
 if (handoffPath) {
   console.log(`calling codex_plan(${handoffPath}) ...`);
+  const t0 = Date.now();
   const res = await request("tools/call", {
     name: "codex_plan",
     arguments: { handoff_path: handoffPath },
   });
+  console.log(`elapsed_ms: ${Date.now() - t0}`);
   console.log("isError:", res.isError ?? false);
   console.log("--- result ---");
   console.log(res.content?.[0]?.text ?? "(no text)");
