@@ -1,7 +1,8 @@
 // Manual JSON-RPC smoke test for the MCP server (stdio, newline-delimited JSON).
 //
-//   node tests/manual/jsonrpc-smoke.mjs                  -> initialize + tools/list only
-//   node tests/manual/jsonrpc-smoke.mjs <handoff_path>   -> also calls codex_plan (runs Codex)
+//   node tests/manual/jsonrpc-smoke.mjs                            -> initialize + tools/list only
+//   node tests/manual/jsonrpc-smoke.mjs <handoff_path>             -> calls codex_plan (runs Codex)
+//   node tests/manual/jsonrpc-smoke.mjs <handoff_path> propose     -> calls codex_propose_patch
 //
 // Run `npm run build` first. Server stderr is passed through for visibility.
 import { spawn } from "node:child_process";
@@ -9,6 +10,10 @@ import path from "node:path";
 import process from "node:process";
 
 const handoffPath = process.argv[2];
+const toolName =
+  process.argv[3] === "propose" || process.argv[3] === "codex_propose_patch"
+    ? "codex_propose_patch"
+    : "codex_plan";
 const server = spawn(process.execPath, [path.resolve("dist/src/server.js")], {
   stdio: ["pipe", "pipe", "inherit"],
 });
@@ -56,10 +61,10 @@ const tools = await request("tools/list", {});
 console.log("tools:", tools.tools.map((t) => t.name).join(", "));
 
 if (handoffPath) {
-  console.log(`calling codex_plan(${handoffPath}) ...`);
+  console.log(`calling ${toolName}(${handoffPath}) ...`);
   const t0 = Date.now();
   const res = await request("tools/call", {
-    name: "codex_plan",
+    name: toolName,
     arguments: { handoff_path: handoffPath },
   });
   const elapsed = Date.now() - t0;

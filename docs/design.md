@@ -124,6 +124,43 @@ codex exec --sandbox read-only --ephemeral --color never --json --skip-git-repo-
 
 - `codex login status` で確認。bridge は認証情報を一切保持・転送しない（設計どおり）
 
+## 8. Phase 2 実装記録（codex_propose_patch — Strategy A）
+
+### 採用判断: read-only のままテキスト diff 生成（Strategy A）
+
+unified diff はテキストであり、**生成**に書き込み権限は不要。Codex は Phase 1 と同一の
+`--sandbox read-only` 構成（spawn 層を無改修で再利用）で diff を agent message として返す。
+
+fallback（設計記録のみ・未実装）: 運用検証で `git apply --check` の失敗率が高い場合、
+temp に `git worktree` を切って `--sandbox workspace-write` + `-C <temp>` で実編集 →
+`git diff` 採取 → worktree 破棄（Strategy B）へ移行する。security.md の command policy
+（Phase 2: temp 作業可・対象リポジトリ書き込み不可）はこの移行を既に許容している。
+
+### 検証パイプライン（すべて bridge 側・適用は一切しない）
+
+```text
+agent message
+  → ```diff フェンス抽出（単一必須。0個・2個以上はエラー。フェンス外の説明文は無視）
+  → Git 形式検証（diff --git 必須。non-git unified diff は拒否）
+  → パス guard（絶対パス・`..`・`\`・`.git/`・バイナリ patch を拒否。/dev/null は許可し
+    diff --git / --- / +++ の3者整合を検証。rename/copy の両側パスも検証）
+  → 上限チェック → git -C <root> apply --check -（stdin・argv 配列・shell:false）
+  → サマリ（ファイル一覧・+/-行数・check passed）＋ diff 本体を返却
+```
+
+### 上限（env で変更可）
+
+| 項目 | 既定値 | env |
+|---|---|---|
+| 対象ファイル数 | 10 | `CODEX_BRIDGE_MAX_PATCH_FILES` |
+| 変更行数（+ と - の合計） | 500 | `CODEX_BRIDGE_MAX_PATCH_LINES` |
+| diff バイト数 | 200,000 | `CODEX_BRIDGE_MAX_PATCH_BYTES` |
+
+### エラー方針
+
+check 失敗・フェンス数違反・検証違反は、生出力/git 出力（上限付き）を添えた
+`isError: true` で返す。**自動再試行・自動適用はしない**（判断は呼び出し側 = PM）。
+
 ### 実走検証の結果と運用知見（2026-06-12）
 
 - **成功経路**: fixture HANDOFF を入力に codex_plan を実走し、4セクション構成の計画のみが返却され
