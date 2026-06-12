@@ -13,6 +13,15 @@
 3. **検収必須** — `codex_apply` の結果は必ず reviewer（/review-diff）の検収を経る。
    ブリッジが検収を代行・省略してはならない
 
+### Approval input validation
+
+`approval` must be a strict boolean value. String-like values such as `"true"`,
+`"yes"`, `"1"`, or non-empty objects must not be treated as approval.
+
+MCP ツール引数として `approval` を受け取る際、truthy な文字列・オブジェクトを
+誤って承認扱いする事故を防ぐため、JSON Schema で `"type": "boolean"` を強制し、
+ブリッジ実装側でも `approval === true` の厳密比較のみを承認と見なす。
+
 ## 2. Workspace guard（作業ディレクトリ制限）
 
 - ブリッジは起動時に許可ディレクトリ（対象リポジトリのルート）を1つ受け取る
