@@ -39,6 +39,13 @@ MCP ツール引数として `approval` を受け取る際、truthy な文字列
 - パッケージインストール・ブランチ操作・push・ネットワークアクセスは全 Phase で不許可
 - 許可コマンドのリストはブリッジ側の設定で持ち、Codex 側の判断に委ねない
 
+Phase 2 の「テンポラリ領域での作業」の実装形態（Phase 2B / Strategy B）:
+HEAD から作成し終了後に必ず破棄する**一時 git worktree** に限定する。
+`--sandbox workspace-write` の書き込み対象はこの worktree のみで、本体 workspace には適用しない。
+実行後に bridge が機械確認する: ①本体の `git status --porcelain` 不変（変化は最優先の重大エラー）
+②worktree の HEAD 不変（commit されていない）③detached HEAD 維持（branch checkout なし）
+④handoff コピーが採取 diff に混入していない。
+
 ## 4. Timeout・中断・rollback
 
 - すべての Codex 実行にタイムアウトを設定する（値は Phase 1 で実測のうえ確定）

@@ -41,14 +41,15 @@ function resolveCodexInvocation(): { command: string; baseArgs: string[] } {
 }
 
 /**
- * Run `codex exec` in the most conservative non-interactive configuration:
- * read-only sandbox, ephemeral session, JSONL output, prompt via stdin.
+ * Run `codex exec` non-interactively: ephemeral session, JSONL output, prompt
+ * via stdin. The command is spawned with shell:false and an argv array — the
+ * working directory and prompt are never concatenated into a shell string.
  *
- * The command is spawned with shell:false and an argv array — the workspace
- * root and prompt are never concatenated into a shell string.
+ * Internal: the sandbox mode is chosen by the exported wrappers below.
  */
-export async function runCodexExecReadOnly(opts: {
-  workspaceRoot: string;
+async function runCodexExec(opts: {
+  cwd: string;
+  sandbox: "read-only" | "workspace-write";
   prompt: string;
   timeoutMs?: number;
 }): Promise<CodexRunResult> {
@@ -61,19 +62,19 @@ export async function runCodexExecReadOnly(opts: {
     ...baseArgs,
     "exec",
     ...(model ? ["-m", model] : []),
-    "--sandbox", "read-only",
+    "--sandbox", opts.sandbox,
     "--ephemeral",
     "--color", "never",
     "--json",
     "--skip-git-repo-check",
-    "-C", opts.workspaceRoot,
+    "-C", opts.cwd,
     "-", // read the prompt from stdin
   ];
 
   return await new Promise<CodexRunResult>((resolve, reject) => {
     const child = spawn(command, args, {
       shell: false,
-      cwd: opts.workspaceRoot,
+      cwd: opts.cwd,
       stdio: ["pipe", "pipe", "pipe"],
     });
 
@@ -109,6 +110,39 @@ export async function runCodexExecReadOnly(opts: {
 
     child.stdin.write(opts.prompt);
     child.stdin.end();
+  });
+}
+
+/** Read-only execution against the real workspace (codex_plan, Strategy A). */
+export async function runCodexExecReadOnly(opts: {
+  workspaceRoot: string;
+  prompt: string;
+  timeoutMs?: number;
+}): Promise<CodexRunResult> {
+  return runCodexExec({
+    cwd: opts.workspaceRoot,
+    sandbox: "read-only",
+    prompt: opts.prompt,
+    timeoutMs: opts.timeoutMs,
+  });
+}
+
+/**
+ * Workspace-write execution — ONLY for a disposable temp worktree (Strategy B).
+ * The signature ties workspace-write to a worktree path on purpose: there is no
+ * way to run codex with write access against the real workspace through this
+ * module.
+ */
+export async function runCodexExecInWorktree(opts: {
+  worktreePath: string;
+  prompt: string;
+  timeoutMs?: number;
+}): Promise<CodexRunResult> {
+  return runCodexExec({
+    cwd: opts.worktreePath,
+    sandbox: "workspace-write",
+    prompt: opts.prompt,
+    timeoutMs: opts.timeoutMs,
   });
 }
 

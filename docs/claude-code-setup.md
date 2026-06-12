@@ -39,6 +39,7 @@ CODEX_BRIDGE_WORKSPACE=<対象リポジトリのルート>
 | `CODEX_BRIDGE_MAX_PATCH_FILES` | `10` | codex_propose_patch が受け入れる diff の対象ファイル数上限 |
 | `CODEX_BRIDGE_MAX_PATCH_LINES` | `500` | 同・変更行数（+/- 合計）上限 |
 | `CODEX_BRIDGE_MAX_PATCH_BYTES` | `200000` | 同・diff バイト数上限 |
+| `CODEX_BRIDGE_PATCH_STRATEGY` | `worktree` | `worktree` = temp worktree で実編集し diff を機械採取（既定）。`readonly` = Strategy A（read-only 手書き diff。新規作成・削除向け） |
 
 ## 動作確認（Claude Code を使わないスタンドアロン検証）
 
@@ -52,3 +53,16 @@ node tests/manual/jsonrpc-smoke.mjs tests/fixtures/HANDOFF-propose-glossary.md p
 
 実走の前後で `git status --porcelain` が変化しないことが合格条件
 （codex_propose_patch は diff を**返すだけ**で適用しないため、これは Phase 2 でも同じ）。
+
+## 復旧手順: temp worktree の残骸が残った場合
+
+通常は bridge が必ず破棄する（段階フォールバック付き）が、強制終了等で残った場合:
+
+```text
+git -C <対象リポジトリ> worktree list          # 残骸の確認
+git -C <対象リポジトリ> worktree remove --force <パス>
+git -C <対象リポジトリ> worktree prune          # 上記が失敗した場合
+```
+
+その後、temp ディレクトリ（`%TEMP%\codex-bridge-wt-*`）が残っていれば削除する。
+worktree strategy の実行には本体が clean tree であることが必須（dirty なら拒否される）。

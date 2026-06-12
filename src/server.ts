@@ -11,7 +11,7 @@ const RAW_OUTPUT_LIMIT = 4000;
 
 const workspaceRoot = process.env.CODEX_BRIDGE_WORKSPACE ?? process.cwd();
 
-const server = new McpServer({ name: "codex-cli-mcp-bridge", version: "0.2.0" });
+const server = new McpServer({ name: "codex-cli-mcp-bridge", version: "0.3.0" });
 
 // Phase 2 exposes exactly two read-only tools: codex_plan and
 // codex_propose_patch. codex_apply (mutation) is Phase 3 and intentionally
