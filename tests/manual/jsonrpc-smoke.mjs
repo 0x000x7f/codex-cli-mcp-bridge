@@ -62,10 +62,12 @@ if (handoffPath) {
     name: "codex_plan",
     arguments: { handoff_path: handoffPath },
   });
-  console.log(`elapsed_ms: ${Date.now() - t0}`);
+  const elapsed = Date.now() - t0;
+  console.log(`elapsed_ms: ${elapsed}`);
   console.log("isError:", res.isError ?? false);
   console.log("--- result ---");
   console.log(res.content?.[0]?.text ?? "(no text)");
+  console.log(`--- end (elapsed_ms: ${elapsed}, isError: ${res.isError ?? false}) ---`);
 }
 
 server.kill();
