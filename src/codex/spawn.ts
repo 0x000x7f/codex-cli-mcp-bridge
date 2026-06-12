@@ -55,9 +55,12 @@ export async function runCodexExecReadOnly(opts: {
   const timeoutMs =
     opts.timeoutMs ?? Number(process.env.CODEX_BRIDGE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
   const { command, baseArgs } = resolveCodexInvocation();
+  // Some accounts/plans only support specific models; keep it configurable.
+  const model = process.env.CODEX_BRIDGE_MODEL;
   const args = [
     ...baseArgs,
     "exec",
+    ...(model ? ["-m", model] : []),
     "--sandbox", "read-only",
     "--ephemeral",
     "--color", "never",

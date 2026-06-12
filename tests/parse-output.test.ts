@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractFinalAgentMessage, CodexOutputParseError } from "../src/codex/parse-output.js";
+import {
+  extractFinalAgentMessage,
+  extractErrorMessages,
+  CodexOutputParseError,
+} from "../src/codex/parse-output.js";
 
 test("extracts the last item.completed agent_message", () => {
   const out = [
@@ -20,6 +24,20 @@ test("extracts protocol-style msg.agent_message", () => {
 test("ignores non-JSON noise lines", () => {
   const out = ["warming up...", JSON.stringify({ type: "agent_message", message: "ok" })].join("\n");
   assert.equal(extractFinalAgentMessage(out), "ok");
+});
+
+test("collects error and turn.failed events, deduplicated", () => {
+  const out = [
+    JSON.stringify({ type: "turn.started" }),
+    JSON.stringify({ type: "error", message: "model not supported" }),
+    JSON.stringify({ type: "turn.failed", error: { message: "model not supported" } }),
+  ].join("\n");
+  assert.deepEqual(extractErrorMessages(out), ["model not supported"]);
+});
+
+test("extractErrorMessages returns empty array when no error events", () => {
+  const out = JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "x" } });
+  assert.deepEqual(extractErrorMessages(out), []);
 });
 
 test("throws CodexOutputParseError carrying raw output when nothing matches", () => {

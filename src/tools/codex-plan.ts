@@ -1,6 +1,6 @@
 import { resolveInsideWorkspace } from "../safety/workspace-guard.js";
 import { runCodexExecReadOnly } from "../codex/spawn.js";
-import { extractFinalAgentMessage } from "../codex/parse-output.js";
+import { extractFinalAgentMessage, extractErrorMessages } from "../codex/parse-output.js";
 
 const STDERR_LIMIT = 2000;
 
@@ -39,7 +39,12 @@ export async function codexPlan(workspaceRoot: string, handoffPath: string): Pro
     );
   }
   if (result.exitCode !== 0) {
-    throw new Error(`Codex exited with code ${result.exitCode}. stderr: ${truncate(result.stderr)}`);
+    const errorEvents = extractErrorMessages(result.stdout);
+    const detail =
+      errorEvents.length > 0
+        ? `error events: ${errorEvents.join(" | ")}`
+        : `stderr: ${truncate(result.stderr)}`;
+    throw new Error(`Codex exited with code ${result.exitCode}. ${detail}`);
   }
   return extractFinalAgentMessage(result.stdout);
 }

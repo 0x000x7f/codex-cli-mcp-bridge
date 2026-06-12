@@ -38,6 +38,35 @@ export function extractFinalAgentMessage(jsonlStdout: string): string {
   return last;
 }
 
+/**
+ * Collect error events from `codex exec --json` JSONL output.
+ * Codex reports request failures as {"type":"error","message":...} and
+ * {"type":"turn.failed","error":{"message":...}} on stdout — stderr is often
+ * empty — so these are the primary diagnostics on non-zero exit.
+ */
+export function extractErrorMessages(jsonlStdout: string): string[] {
+  const messages: string[] = [];
+  for (const line of jsonlStdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === "") continue;
+    let event: unknown;
+    try {
+      event = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (typeof event !== "object" || event === null) continue;
+    const e = event as Record<string, unknown>;
+    if (e.type === "error" && typeof e.message === "string") {
+      messages.push(e.message);
+    } else if (e.type === "turn.failed") {
+      const err = e.error as Record<string, unknown> | undefined;
+      if (err && typeof err.message === "string") messages.push(err.message);
+    }
+  }
+  return [...new Set(messages)];
+}
+
 function agentMessageText(event: unknown): string | undefined {
   if (typeof event !== "object" || event === null) return undefined;
   const e = event as Record<string, unknown>;

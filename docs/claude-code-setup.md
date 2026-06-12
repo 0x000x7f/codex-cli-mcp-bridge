@@ -35,6 +35,7 @@ CODEX_BRIDGE_WORKSPACE=<対象リポジトリのルート>
 | `CODEX_BRIDGE_WORKSPACE` | サーバーの cwd | 許可ワークスペースのルート（1つ） |
 | `CODEX_BRIDGE_TIMEOUT_MS` | `300000` | Codex 実行のタイムアウト（超過時はプロセスツリーを強制終了） |
 | `CODEX_BRIDGE_CODEX_JS` | 自動探索 | `@openai/codex/bin/codex.js` の絶対パス（Windows の npm グローバル以外に置いた場合） |
+| `CODEX_BRIDGE_MODEL` | CLI 既定 | `codex exec -m` に渡すモデル名。アカウントのプランによって利用可能モデルが異なる場合に指定 |
 
 ## 動作確認（Claude Code を使わないスタンドアロン検証）
 
