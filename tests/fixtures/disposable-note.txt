@@ -1,0 +1,2 @@
+This file exists only as a deletion target for Phase 2 field testing.
+It has no other purpose and may be removed by an approved patch in a later phase.

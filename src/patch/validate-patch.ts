@@ -60,6 +60,10 @@ export function validateGitPatch(diff: string, limits: PatchLimits): PatchSummar
   let deletions = 0;
   let currentA: string | undefined;
   let currentB: string | undefined;
+  // Hunk state: between `@@` and the next `diff --git`, lines starting with
+  // `---`/`+++` are CONTENT (e.g. deleting a line that itself starts with
+  // `-- `), not headers. Without this, valid diffs get falsely rejected.
+  let inHunk = false;
 
   for (const line of lines) {
     if (line.startsWith("GIT binary patch") || line.startsWith("Binary files ")) {
@@ -67,6 +71,7 @@ export function validateGitPatch(diff: string, limits: PatchLimits): PatchSummar
     }
 
     if (line.startsWith("diff --git ")) {
+      inHunk = false;
       const m = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
       if (!m) {
         throw new PatchValidationError(`unparsable diff --git header: ${line}`);
@@ -79,7 +84,12 @@ export function validateGitPatch(diff: string, limits: PatchLimits): PatchSummar
       continue;
     }
 
-    if (line.startsWith("--- ")) {
+    if (line.startsWith("@@")) {
+      inHunk = true;
+      continue;
+    }
+
+    if (!inHunk && line.startsWith("--- ")) {
       const value = line.slice(4).trim();
       if (value !== "/dev/null") {
         if (currentA === undefined || value !== `a/${currentA}`) {
@@ -91,7 +101,7 @@ export function validateGitPatch(diff: string, limits: PatchLimits): PatchSummar
       continue;
     }
 
-    if (line.startsWith("+++ ")) {
+    if (!inHunk && line.startsWith("+++ ")) {
       const value = line.slice(4).trim();
       if (value !== "/dev/null") {
         if (currentB === undefined || value !== `b/${currentB}`) {
@@ -104,18 +114,21 @@ export function validateGitPatch(diff: string, limits: PatchLimits): PatchSummar
     }
 
     if (
-      line.startsWith("rename from ") ||
-      line.startsWith("rename to ") ||
-      line.startsWith("copy from ") ||
-      line.startsWith("copy to ")
+      !inHunk &&
+      (line.startsWith("rename from ") ||
+        line.startsWith("rename to ") ||
+        line.startsWith("copy from ") ||
+        line.startsWith("copy to "))
     ) {
       const value = line.replace(/^(rename|copy) (from|to) /, "").trim();
       assertSafeRepoPath(value);
       continue;
     }
 
-    if (line.startsWith("+")) additions += 1;
-    else if (line.startsWith("-")) deletions += 1;
+    if (inHunk) {
+      if (line.startsWith("+")) additions += 1;
+      else if (line.startsWith("-")) deletions += 1;
+    }
   }
 
   if (files.length === 0) {

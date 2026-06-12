@@ -134,6 +134,28 @@ test("enforces the byte-size limit", () => {
   );
 });
 
+test("treats ---/+++-looking lines inside hunks as content, not headers", () => {
+  // Deleting a line whose content starts with "-- " produces "--- ..." inside
+  // the hunk; it must be counted as a deletion, not parsed as a header.
+  const d = gitDiff([
+    "diff --git a/doc.md b/doc.md",
+    "--- a/doc.md",
+    "+++ b/doc.md",
+    "@@ -1,2 +1,1 @@",
+    "--- dashed bullet line",
+    " keep",
+  ]);
+  const s = validateGitPatch(d, LIMITS);
+  assert.equal(s.deletions, 1);
+  assert.equal(s.additions, 0);
+});
+
+test("does not count header lines as changes", () => {
+  const s = validateGitPatch(NEW_FILE, LIMITS);
+  assert.equal(s.additions, 2); // only the two +content lines, not "+++ b/..."
+  assert.equal(s.deletions, 0);
+});
+
 test("validates rename paths", () => {
   const d = gitDiff([
     "diff --git a/src/a.ts b/src/b.ts",
