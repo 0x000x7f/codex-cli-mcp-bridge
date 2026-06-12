@@ -38,6 +38,14 @@ test("rejects an absolute path outside the workspace", () => {
   );
 });
 
+test("rejects an absolute path even when it points inside the workspace", () => {
+  const { root } = setup();
+  assert.throws(
+    () => resolveInsideWorkspace(root, path.join(root, "docs", "handoff.md")),
+    WorkspaceGuardError,
+  );
+});
+
 test("rejects sibling directory sharing the root prefix (repo vs repo-evil)", () => {
   const { root, evil } = setup();
   assert.throws(

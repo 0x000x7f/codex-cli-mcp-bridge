@@ -2,14 +2,15 @@
 
 ## Purpose
 
-This repository is the design-phase (Phase 0) home of an experimental MCP bridge that will
-let Claude Code invoke Codex CLI through staged, safety-gated tools. At this phase the
-repository intentionally contains **documentation only** — there is no `src/` directory yet.
+This repository is an experimental MCP bridge that lets Claude Code invoke Codex CLI
+through staged, safety-gated tools. Phase 1 is implemented: `src/` contains a TypeScript
+MCP server exposing exactly one tool, `codex_plan` (strictly read-only).
 
 ## Rules for coding agents
 
-- Phase 0 is documentation-only. Do not add source code, package manifests, or build
-  configuration unless the task explicitly starts Phase 1.
+- Do not add `codex_propose_patch` / `codex_apply` (or any mutating tool) unless the task
+  explicitly starts Phase 2 or Phase 3. The MCP tools/list must keep exposing only
+  `codex_plan` until then.
 - Do not modify unrelated files.
 - Keep diffs small and reviewable.
 - Do not assume access to previous chat context; everything you need must be in this

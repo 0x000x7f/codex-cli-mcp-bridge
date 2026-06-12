@@ -1,15 +1,14 @@
 # codex-cli-mcp-bridge
 
-> **Status**: design phase (Phase 0) — documentation only, no implementation yet.
-> Experimental. Not an official Anthropic / OpenAI project.
+> **Status**: experimental — Phase 1 (`codex_plan`, read-only) implemented and verified
+> (working tree unchanged before/after a real run). Not an official Anthropic / OpenAI project.
 
-> **EN** — A design-phase concept for bridging Codex CLI into Claude Code as an MCP server,
+> **EN** — An experimental MCP server bridging Codex CLI into Claude Code,
 > automating the manual Markdown-handoff workflow of
 > [claude-code-agent-workflow](https://github.com/0x000x7f/claude-code-agent-workflow).
 > Three staged tools isolate mutation behind an explicit approval gate:
-> `codex_plan` (read-only) → `codex_propose_patch` (diff proposal only) → `codex_apply`
-> (explicit approval required). Source code will be introduced only after the design,
-> security model, and tool boundaries are reviewed.
+> `codex_plan` (read-only, implemented) → `codex_propose_patch` (diff proposal only, planned)
+> → `codex_apply` (explicit approval required, planned).
 
 Claude Code から Codex CLI を MCP ツールとして呼び出し、
 [claude-code-agent-workflow](https://github.com/0x000x7f/claude-code-agent-workflow) の

@@ -18,6 +18,12 @@ export interface GuardedFile {
  * Entries whose own name begins with ".." are rejected as well (fail-closed).
  */
 export function resolveInsideWorkspace(workspaceRoot: string, requestedPath: string): GuardedFile {
+  // The tool contract says handoff_path is relative to the workspace root —
+  // reject absolute paths outright instead of merely checking containment.
+  if (path.isAbsolute(requestedPath)) {
+    throw new WorkspaceGuardError("handoff_path must be relative to the workspace root");
+  }
+
   let rootReal: string;
   try {
     rootReal = fs.realpathSync.native(workspaceRoot);
