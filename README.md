@@ -1,13 +1,15 @@
 # codex-cli-mcp-bridge
 
-> **Status**: experimental — Phase 1 (`codex_plan`, read-only) implemented and verified
-> (working tree unchanged before/after a real run). Not an official Anthropic / OpenAI project.
+> **Status**: experimental — Phases 1–2 implemented and verified (`codex_plan` read-only,
+> `codex_propose_patch` diff-proposal-only; working tree unchanged before/after real runs).
+> Not an official Anthropic / OpenAI project.
 
 > **EN** — An experimental MCP server bridging Codex CLI into Claude Code,
 > automating the manual Markdown-handoff workflow of
 > [claude-code-agent-workflow](https://github.com/0x000x7f/claude-code-agent-workflow).
 > Three staged tools isolate mutation behind an explicit approval gate:
-> `codex_plan` (read-only, implemented) → `codex_propose_patch` (diff proposal only, planned)
+> `codex_plan` (read-only, implemented) → `codex_propose_patch` (returns a validated Git
+> unified diff, verified with `git apply --check`, never applied — implemented)
 > → `codex_apply` (explicit approval required, planned).
 
 Claude Code から Codex CLI を MCP ツールとして呼び出し、
@@ -25,14 +27,15 @@ Claude Code から Codex CLI を MCP ツールとして呼び出し、
 | ツール | Phase | できること | できないこと |
 |---|---|---|---|
 | `codex_plan(handoff_path)` | 1 | HANDOFF 文書を Codex に読ませ、要約と実装計画を返す | ファイル変更の一切 |
-| `codex_propose_patch(handoff_path)` | 2 | unified diff 案を返す | working tree への適用 |
+| `codex_propose_patch(handoff_path)` | 2 | 検証済み unified diff 案を返す（フェンス抽出 → Git 形式・パス guard・上限 → `git apply --check`） | working tree への適用 |
 | `codex_apply(handoff_path, approval)` | 3 | `approval=true` 明示時のみ diff を適用 | 承認なしの適用 |
 
 ## Roadmap
 
 - [x] Phase 0: 設計・セキュリティモデル・既存方式との比較
 - [x] Phase 1: `codex_plan`（読み取り専用ツール）の実装と検証 — 実走前後で working tree 不変を確認済み
-- [ ] Phase 2: `codex_propose_patch`（diff 提案のみ）
+- [x] Phase 2: `codex_propose_patch`（diff 提案のみ・Strategy A = read-only のままテキスト diff 生成）— `apply --check` passed の実走で working tree 不変を確認済み
+- [ ] Phase 2 運用検証（field test 5件以上・check 通過率の実測 → [docs/ops/phase2-validation-log.md](docs/ops/phase2-validation-log.md)）
 - [ ] Phase 3: `codex_apply`（承認ゲート付き適用）
 - [ ] クロスエージェント自動レビューループ
 
