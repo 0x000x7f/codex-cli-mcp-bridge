@@ -89,8 +89,37 @@ Claude Code ──(MCP / JSON-RPC over stdio)── codex-cli-mcp-bridge (TypeSc
 
 以下は Phase 0 時点で**未解決**であり、Phase 1 以降の実機検証で確定する:
 
-- Codex CLI の非対話モードの正確な呼び出し方法・出力形式・終了コード
-- タイムアウト値と、タイムアウト時に Codex サブプロセスを安全に停止する方法
-- 部分適用された diff の検出と rollback の自動化（`git stash` ベース案 vs worktree 分離案）
+- ~~Codex CLI の非対話モードの正確な呼び出し方法・出力形式・終了コード~~ → §7 で確定
+- ~~タイムアウト値と、タイムアウト時に Codex サブプロセスを安全に停止する方法~~ → §7 で確定
+- 部分適用された diff の検出と rollback の自動化（`git stash` ベース案 vs worktree 分離案）— Phase 2/3
 - Claude 側と Codex 側の usage limit を相互監視する仕組み（どちらに作業を寄せるかの判断材料）
-- Windows パス（バックスラッシュ・ドライブレター）と POSIX パスの変換境界
+- ~~Windows パス（バックスラッシュ・ドライブレター）と POSIX パスの変換境界~~ → §7 で確定
+
+## 7. Phase 1 実機確定事項（codex-cli 0.118.0 で検証）
+
+### 非対話モードの呼び出し（確定）
+
+```text
+codex exec --sandbox read-only --ephemeral --color never --json --skip-git-repo-check -C <workspaceRoot> -
+```
+
+- `--sandbox read-only` — モデル生成コマンドの実行を読み取り専用サンドボックスに制限（CLI レベルの強制）
+- `--ephemeral` — セッションファイルをディスクに残さない（ステートレス設計と一致）
+- `--json` — イベントを JSONL で stdout に出力。最終 agent message を抽出して返す。
+  パース失敗時は生出力を添えてエラーにする（推測で続行しない）
+- `-`（プロンプトは stdin から）— shell 文字列結合を排除。spawn は `shell: false` の argv 配列のみ
+- `--output-last-message` は**使わない**（ファイル書き込みが発生するため）
+- approval 系: `exec` は非対話設計で承認プロンプト自体が発生しない。
+  `--dangerously-bypass-approvals-and-sandbox` は全 Phase で使用禁止
+
+### Windows 固有の確定事項
+
+- npm グローバルの `codex` は `codex.cmd` ラッパーであり、Node は `shell: false` での
+  `.cmd` spawn を拒否する（CVE-2024-27980 対策）。そのため **`node` 実行ファイルで
+  `@openai/codex/bin/codex.js` を直接起動**する（`CODEX_BRIDGE_CODEX_JS` で上書き可能）
+- タイムアウト時の停止は `taskkill /PID <pid> /T /F` でプロセスツリーごと強制終了
+  （codex.js の子に native バイナリがいるため `/T` が必須）。POSIX は `SIGKILL`
+
+### 認証（確定）
+
+- `codex login status` で確認。bridge は認証情報を一切保持・転送しない（設計どおり）
