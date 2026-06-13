@@ -1,8 +1,10 @@
 # 設計ドキュメント（Phase 0）
 
-> This repository intentionally starts without a `src/` directory in Phase 0.
-> Source code will be introduced only after the design, security model, and tool
-> boundaries are reviewed.
+> §1–§6 はこのリポジトリの **Phase 0 初期設計**の記録（当時 `src/` は未作成だった）。
+> その後 Phase 1〜3 を実装し、仕様は更新されている。**§7–§10 が as-built（実装どおり）の
+> 記録であり、初期設計と差異がある場合はそちらが優先する**。
+> 例: codex_apply の最終仕様は §10（diff を引数で受け取り、Codex は呼ばない）であり、
+> §3.3 の初期案（`handoff_path` ベース）を置き換える。
 
 ## 1. 目的
 
