@@ -62,6 +62,8 @@ export function buildFileBlockPrompt(gitRelHandoffPath: string): string {
     "===DELETE: relative/path===",
     "Rules:",
     "- A FILE block must contain the COMPLETE new contents of that file; it fully replaces the existing file or creates a new one. Never abbreviate, elide, or write placeholders such as '... unchanged ...'.",
+    "- Preserve all existing non-ASCII characters EXACTLY unless the handoff explicitly asks to change them. Do not normalize or substitute punctuation, em/en dashes (—, –), curly quotes, Japanese text, or any Unicode symbol.",
+    "- For lines you are not changing, copy them byte-for-byte from the original file. Treat the file as UTF-8.",
     "- Use a DELETE block (no body, no ===END===) only to delete a file.",
     "- Repository-relative paths with forward slashes only. Never touch .git/ or the handoff document itself.",
     "- Do not output a unified diff or patch. Do not run commands that change anything.",
