@@ -14,9 +14,21 @@ review_focus を含むこと・**ソースが書き込み/apply/commit 系 API �
 
 ## ライブ field test（実 workspace = bridge repo、v0.6.0）
 
-（実走時に記入。手順: codex_propose_patch で diff＋diff_sha256＋base_head を取得 →
-同じ値で codex_review_patch を呼ぶ → written verdict が返り、実行前後で
-`git status --porcelain` が不変であることを確認）
+手順: codex_propose_patch（HANDOFF-propose-glossary）で diff＋diff_sha256＋base_head を取得 →
+同じ値で codex_review_patch を実行。
+
+| 項目 | 結果 |
+|---|---|
+| review 実行 | **成功**（35.6s）。固定セクション全部（Blocking/Non-blocking/Scope creep/Oversized/Test/Security/Non-ASCII/Verdict）を返却 |
+| verdict | `approve`（助言）。「ADVISORY ONLY — does not approve or apply」ヘッダ付き |
+| working tree | **不変**（review は何も書かない・`git status --porcelain` 前後一致） |
+| 束縛 | propose の diff_sha256/base_head をそのまま渡して通過（対象 diff に束縛） |
+
+**相関故障のライブ実証**: reviewer が Non-ASCII セクションで自己申告 —
+「LOW CONFIDENCE … **Existing repository docs displayed mojibake through my read path**,
+so this is not a substitute for human review of encoding-sensitive content.」
+→ Phase 2B′ で見立てた「reviewer Codex も同じ CP932 read-path を共有し mojibake を被る」が
+**reviewer 自身の出力で裏付けられた**。mojibake 検出を Codex reviewer に依存しない設計判断が正しい。
 
 ## 判定
 
