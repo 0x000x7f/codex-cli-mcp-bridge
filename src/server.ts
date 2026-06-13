@@ -56,9 +56,10 @@ server.registerTool(
     title: "Codex propose patch (diff proposal only)",
     description:
       "Have Codex CLI read a handoff document and return a validated Git unified diff " +
-      "PROPOSAL. The patch is verified with `git apply --check` but never applied — " +
-      "the working tree is not modified. Applying patches (codex_apply) is Phase 3 and " +
-      "not implemented.",
+      "PROPOSAL plus its diff_sha256 and base_head. The patch is verified with " +
+      "`git apply --check` but never applied here — the working tree is not modified. " +
+      "Applying is handled separately by codex_apply, only after a human reviews the " +
+      "returned diff (pass diff, diff_sha256, and base_head to it).",
     inputSchema: {
       handoff_path: z
         .string()
