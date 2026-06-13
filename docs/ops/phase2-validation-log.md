@@ -122,3 +122,43 @@ Strategy B は native Windows の codex exec 書き込みブロックにより�
 **判定: 構造的 diff 品質ゲートは通過。ただし Phase 3（自動適用）の前に、文字化け検出を
 レビュー必須として担保する設計が条件。** B′ の diff はそのままでは「apply 可能」だが
 「内容が正しい」とは限らないため、適用の自動化は文字化け対策とセットで設計する。
+
+---
+
+## Phase 2B′-minor: 文字化け緩和テスト（プロンプト制約）
+
+B2 の em dash 文字化けに対し、B′ プロンプトへ非ASCII保持制約を追加して再検証した。
+
+追加した制約（要旨）: "Preserve all existing non-ASCII characters EXACTLY ... Do not
+normalize ... em/en dashes, curly quotes, Japanese text ... For lines you are not changing,
+copy them byte-for-byte from the original file. Treat the file as UTF-8."
+
+| No | Target | Handoff | 結果 |
+|---|---|---|---|
+| B7 | bridge | propose-agents-note（B2 の再実走） | **緩和無効** — em dash `—` が依然 `窶・` に文字化け（変更していない既存行まで -/+ で出た） |
+| — | bridge | propose-design-note（日本語＋em dash 混在） | ctx_shell の 120s 制限で中断（大ファイルで処理長）。worktree 残骸が残り手動 cleanup（下記） |
+
+### 結論（確定）
+
+1. **プロンプト緩和は無効**。文字化けは Codex 側のエンコーディング問題であり、bridge の
+   プロンプトでは解決できない
+2. **化けているのは Codex の出力時点**: bridge は stdout を UTF-8 で読んでおり、同一 JSON
+   内の日本語（かな・漢字）は正しく復元される。にもかかわらず em dash だけ `窶`（U+7AB6＝
+   UTF-8 バイト E2 80 を CP932 誤解釈した時の典型）に化ける → Codex がファイルを読む/出力する
+   過程で特定の非ASCII記号にエンコーディング変換ミスが起きている（文字種依存）
+3. bridge 側で完全な自動検出は困難（`窶` は合法な日本語文字でもあり誤検知が多い）
+
+### 対策方針（Phase 3 設計へ）
+
+文字化けは **Phase 3 の承認ゲートで吸収する** — `codex_apply` は適用前に diff を提示し、
+人間が内容（文字化け含む）を確認して `approval=true` を返したときのみ適用する。承認の瞬間が
+そのままレビューになる。補助として、bridge が diff サマリに「非ASCII を含む変更行数」を
+警告表示することは安価で有効（実装は Phase 3 とあわせて検討）。
+
+### 運用知見: 大ファイル × 親プロセス強制終了で worktree 残骸
+
+design.md（大）は Codex 処理が長く、親プロセス（ここでは ctx_shell の 120s 制限）が
+bridge を強制終了すると finally の cleanup が走らず worktree が残った。本体 porcelain は
+不変（安全性は保持）。手動復旧: 孤立した codex プロセスを停止 → `git worktree remove --force`
+→ `git worktree prune` → temp ディレクトリ削除。**大ファイルの実走は bridge の timeout
+（既定 300s）以上の余裕を持って実行する**こと（短い親タイムアウトで切らない）。
