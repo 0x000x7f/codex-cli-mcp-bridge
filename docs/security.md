@@ -36,6 +36,18 @@ MCP ツール引数として `approval` を受け取る際、truthy な文字列
 - working tree のみに適用し、**stage も commit もしない**（`--3way` も使わない）
 - 失敗時は touched files 限定で rollback。`git checkout -- .` は使わない
 
+### codex_review_patch（第三者レビュー・Phase 4・助言のみ）
+
+`codex_review_patch` は read-only の任意レビューツール。**安全の中核ではなく補助**:
+
+- ファイル変更しない・`codex_apply` を呼ばない・apply 用 approval/sha256 を生成しない・
+  stage/commit しない・verdict による自動 apply をしない
+- verdict は**助言**であり、人間 approval（codex_apply の `approval=true`）の代替にしない。
+  apply ゲート（approval=true ＋ diff_sha256 ＋ base_head ＋ clean tree）は不変
+- レビュー対象 diff は `validateGitPatch` ＋ diff_sha256 ＋ base_head で propose の exact diff に束縛
+- **mojibake 判定は低信頼**: native Windows では reviewer も同じ PowerShell CP932 read-path を
+  共有しうる相関故障のため。非ASCII の文字化け検出は人間レビュー＋WSL2 が本丸
+
 ## 2. Workspace guard（作業ディレクトリ制限）
 
 - ブリッジは起動時に許可ディレクトリ（対象リポジトリのルート）を1つ受け取る
