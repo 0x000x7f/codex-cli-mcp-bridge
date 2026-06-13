@@ -39,9 +39,12 @@ MCP ツール引数として `approval` を受け取る際、truthy な文字列
 - パッケージインストール・ブランチ操作・push・ネットワークアクセスは全 Phase で不許可
 - 許可コマンドのリストはブリッジ側の設定で持ち、Codex 側の判断に委ねない
 
-Phase 2 の「テンポラリ領域での作業」の実装形態（Phase 2B / Strategy B）:
+Phase 2 の「テンポラリ領域での作業」の実装形態（Phase 2B / Strategy B′）:
 HEAD から作成し終了後に必ず破棄する**一時 git worktree** に限定する。
-`--sandbox workspace-write` の書き込み対象はこの worktree のみで、本体 workspace には適用しない。
+**Codex の実行はすべて read-only であり、書き込みは bridge 自身が行う**
+（native Windows では codex exec のエージェント書き込みが全構成でブロックされるため —
+design.md §9）。bridge の書き込みは strict block format の parse を通過した
+repo 相対パスのみが対象で、worktree 外・`.git/`・handoff 自身・バイナリ・上限超過は拒否する。
 実行後に bridge が機械確認する: ①本体の `git status --porcelain` 不変（変化は最優先の重大エラー）
 ②worktree の HEAD 不変（commit されていない）③detached HEAD 維持（branch checkout なし）
 ④handoff コピーが採取 diff に混入していない。

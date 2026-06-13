@@ -39,7 +39,10 @@ CODEX_BRIDGE_WORKSPACE=<対象リポジトリのルート>
 | `CODEX_BRIDGE_MAX_PATCH_FILES` | `10` | codex_propose_patch が受け入れる diff の対象ファイル数上限 |
 | `CODEX_BRIDGE_MAX_PATCH_LINES` | `500` | 同・変更行数（+/- 合計）上限 |
 | `CODEX_BRIDGE_MAX_PATCH_BYTES` | `200000` | 同・diff バイト数上限 |
-| `CODEX_BRIDGE_PATCH_STRATEGY` | `worktree` | `worktree` = temp worktree で実編集し diff を機械採取（既定）。`readonly` = Strategy A（read-only 手書き diff。新規作成・削除向け） |
+| `CODEX_BRIDGE_PATCH_STRATEGY` | `worktree` | `worktree` = Strategy B′: Codex（read-only）が完全ファイル内容を出力し、bridge が temp worktree に書き込んで diff を機械採取（既定）。`readonly` = Strategy A（手書き diff。新規作成・削除向け） |
+| `CODEX_BRIDGE_MAX_REWRITE_FILES` | `10` | B′ の FILE/DELETE block 数上限 |
+| `CODEX_BRIDGE_MAX_REWRITE_FILE_BYTES` | `65536` | B′ の FILE block 1件のバイト数上限 |
+| `CODEX_BRIDGE_MAX_REWRITE_TOTAL_BYTES` | `200000` | B′ の FILE block 合計バイト数上限 |
 
 ## 動作確認（Claude Code を使わないスタンドアロン検証）
 

@@ -161,44 +161,73 @@ agent message
 check 失敗・フェンス数違反・検証違反は、生出力/git 出力（上限付き）を添えた
 `isError: true` で返す。**自動再試行・自動適用はしない**（判断は呼び出し側 = PM）。
 
-## 9. Phase 2B 実装記録（Strategy B — temp worktree 方式・既定化）
+## 9. Phase 2B 実装記録（Strategy B′ — temp worktree ＋ bridge-applied writes・既定化）
 
 Phase 2 field test で Strategy A の `apply --check` 通過率が 29%（既存ファイル変更 0/4）に
-留まったため（docs/ops/phase2-validation-log.md）、§8 に記録していた fallback を実装し
-**既定戦略**とした。Codex に diff を手書きさせず実編集させるため、context 行と hunk 構造は
-Git が生成し、原理的に正確になる。
+留まったため（docs/ops/phase2-validation-log.md）、temp worktree 方式へ移行した。
+ただし実機検証の結果、**native Windows では codex exec のエージェント書き込みが
+あらゆる構成でブロックされる**ことが判明し（下記）、「Codex が直接編集する」Strategy B から
+「**Codex は read-only で完全ファイル内容を出力し、bridge が worktree に書き込む**」
+Strategy B′ にピボットした。diff は Git が生成するため context/hunk は原理的に正確になる。
 
-### 方式
+### native Windows での実機調査結果（codex-cli 0.139.0、2026-06-13）
+
+| 構成 | 結果 |
+|---|---|
+| `--sandbox workspace-write`（旧式） | バナーごと **read-only に黙って降格**（openai/codex Issue #6374 と同症状） |
+| `--full-auto` | 同上 |
+| 新 permission profiles `-c default_permissions=":workspace"`（0.138+） | バナーは workspace-write になるが、apply_patch は「outside of the project」・shell 書き込みは「rejected by policy」で**全拒否** |
+| trust 注入・temp/ホーム/worktree/通常 repo の全組合せ | すべて同じ |
+| `codex sandbox -P :workspace -- <直接コマンド>` | **書き込み成功**（restricted token sandbox 自体は機能） |
+
+**運用上の罠**: `--sandbox` フラグを渡すと新 permission profiles（`default_permissions`）は
+無効化される（公式仕様: 両系は併用不可、旧系が優先）。
+
+### 方式（B′）
 
 ```text
 本体 clean tree 確認（dirty は拒否）
 → os.tmpdir() 配下に git worktree add --detach <temp> HEAD
-→ handoff を worktree 内へコピー（gitignored/未コミット handoff は HEAD 由来の worktree に
-  存在しないため。tracked の場合は無害な上書き）
-→ codex exec --sandbox workspace-write -C <temp>（実編集。プロンプトで diff 出力・commit・
-  branch・install・.git 接触・handoff 編集を禁止）
-→ HEAD 不変＋detached 維持を機械確認（rev-parse / symbolic-ref）
-→ handoff コピーの後始末（tracked = checkout 復元・untracked = 削除）
-→ git add -A（worktree 専用 index）→ git diff --cached --no-color --no-ext-diff で採取
+→ handoff を worktree 内へコピー（gitignored/未コミット handoff は worktree に存在しないため）
+→ codex exec --sandbox read-only -C <temp>（Windows で実証済みの構成のまま）
+  Codex は変更を strict block format で出力する:
+    ===FILE: relative/path===
+    <complete file contents>
+    ===END===
+    ===DELETE: relative/path===
+→ bridge が parse（block 外本文・重複/不正パス・.git・handoff 自身・バイナリ・上限超過を拒否）
+→ bridge が worktree に write/delete（ログは path と bytes のみ）
+→ HEAD 不変＋detached 維持を機械確認 → handoff コピーの後始末（tracked=checkout・untracked=削除）
+→ git add -A → git diff --cached --no-color --no-ext-diff で採取
 → worktree を必ず破棄（remove --force → fs.rm → prune の段階フォールバック）
 → 破棄の成否にかかわらず本体 porcelain を確認（変化は最優先の重大エラー）
-→ 採取 diff を Strategy A と同一の validate（Git 形式・path guard・上限）＋
-  本体への git apply --check に通して返却（二重防御）
+→ 採取 diff を Strategy A と同一の validate ＋ 本体への git apply --check に通して返却（二重防御）
 ```
+
+### 上限（B′ 固有・env で変更可）
+
+| 項目 | 既定値 | env |
+|---|---|---|
+| FILE/DELETE block 数 | 10 | `CODEX_BRIDGE_MAX_REWRITE_FILES` |
+| FILE block 1件のバイト数 | 65,536 | `CODEX_BRIDGE_MAX_REWRITE_FILE_BYTES` |
+| FILE block 合計バイト数 | 200,000 | `CODEX_BRIDGE_MAX_REWRITE_TOTAL_BYTES` |
 
 ### 安全設計の要点
 
-- `workspace-write` は **worktree パス引数とセットでしか呼べない関数**（`runCodexExecInWorktree`）に
-  封じ込め。本体 workspace を書き込み対象にする経路はこのモジュールに存在しない
-- handoff が採取 diff に混入していないことを**機械チェック**（ファイル一覧照合）で保証
+- **bridge 内の codex 呼び出しはすべて read-only**（workspace-write は一切使わない）。
+  書き込みは bridge 自身のコードが行い、worktree 境界とパス guard を OS サンドボックスに
+  依存せず強制する
+- 完全ファイル内容方式の弱点（大きいファイルの転記ミス）は、①per-file 64KB 上限と
+  ②**ミスが必ず diff に現れる**（HEAD との差分として可視化される）ことで管理する
+- handoff が採取 diff に混入していないことを機械チェック（parse 段階の拒否＋採取後の照合）で保証
 - temp worktree の絶対パスは MCP 応答ではマスク（`<temp worktree>`）。詳細は stderr ログのみ
 - `--binary` は採取時に付けない（バイナリ変更は "Binary files" 行になり validate が拒否）
 
 ### Strategy A の扱い
 
-`CODEX_BRIDGE_PATCH_STRATEGY=readonly` で温存（既定は `worktree`）。
-新規ファイル作成・小さな削除では A も有効（軽量・書き込み面ゼロ）と field test で実証済み。
-自動ルーティング・A→B フォールバックは将来課題。
+`CODEX_BRIDGE_PATCH_STRATEGY=readonly` で温存（既定は `worktree` = B′）。
+新規ファイル作成・小さな削除では A も有効（軽量）と field test で実証済み。
+自動ルーティング・A→B′ フォールバックは将来課題。
 
 ### 実走検証の結果と運用知見（2026-06-12）
 

@@ -1,11 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveInsideWorkspace } from "../safety/workspace-guard.js";
-import {
-  runCodexExecReadOnly,
-  runCodexExecInWorktree,
-  type CodexRunResult,
-} from "../codex/spawn.js";
+import { runCodexExecReadOnly, type CodexRunResult } from "../codex/spawn.js";
 import { extractFinalAgentMessage, extractErrorMessages } from "../codex/parse-output.js";
 import { extractSingleDiffFence } from "../patch/extract-diff.js";
 import { validateGitPatch, defaultLimits, type PatchSummary } from "../patch/validate-patch.js";
@@ -18,6 +14,8 @@ import {
 } from "../worktree/temp-worktree.js";
 import { cleanupHandoffCopy, collectWorktreeDiff } from "../worktree/collect-diff.js";
 import { runGit } from "../worktree/run-git.js";
+import { parseFileBlocks, defaultRewriteLimits } from "../patch/parse-file-blocks.js";
+import { applyBlocksToWorktree } from "../worktree/apply-blocks.js";
 
 const STDERR_LIMIT = 2000;
 
@@ -40,26 +38,35 @@ export async function codexProposePatch(
 }
 
 /* ------------------------------------------------------------------ */
-/* Strategy B (default): real edits in a disposable worktree           */
+/* Strategy B′ (default): Codex stays read-only and outputs complete   */
+/* file contents; the BRIDGE applies them to a disposable worktree.    */
+/* (Native Windows blocks codex-exec agent writes in every sandbox     */
+/* configuration — see docs/design.md §9.)                             */
 /* ------------------------------------------------------------------ */
 
 /**
- * Strategy B prompt: Codex edits files for real inside the disposable
- * worktree; it must NOT print a diff (review constraint #5) — the bridge
- * collects the diff mechanically afterwards, so context lines are correct by
- * construction.
+ * Strategy B′ prompt: no diffs (they break — Phase 2A field test), no agent
+ * writes (blocked on native Windows). Codex returns complete file contents in
+ * a strict block format; anything outside the blocks fails the proposal.
  */
-export function buildWorktreeEditPrompt(gitRelHandoffPath: string): string {
+export function buildFileBlockPrompt(gitRelHandoffPath: string): string {
   return [
-    "You are working inside a DISPOSABLE git worktree. Your edits here are collected as a diff by the bridge afterwards; the real repository is not affected.",
+    "You are preparing a change proposal. You are running read-only inside a snapshot of the repository; the bridge will apply your output to a disposable worktree and collect a git diff. The real repository is not affected.",
     `Read the handoff document at: ${gitRelHandoffPath}`,
-    "Implement the smallest reasonable change that satisfies the handoff by EDITING FILES DIRECTLY in this worktree.",
-    "Do not print a patch or unified diff. Modify the files directly in this temporary worktree.",
-    "Do not commit, branch, push, install packages, or touch .git.",
-    "Do not edit the handoff document itself.",
-    "Do not write outside this worktree.",
-    "Keep the change minimal: do not reformat unrelated lines.",
-    "When you are done, reply with a one-paragraph summary of what you changed. The bridge will collect the diff after you finish.",
+    "You may read other files in this repository for context.",
+    "Design the smallest reasonable change that satisfies the handoff.",
+    "Return ONLY file blocks in exactly this format — no other prose, no headings, no explanations, no diffs:",
+    "===FILE: relative/path===",
+    "<complete new file contents>",
+    "===END===",
+    "===DELETE: relative/path===",
+    "Rules:",
+    "- A FILE block must contain the COMPLETE new contents of that file; it fully replaces the existing file or creates a new one. Never abbreviate, elide, or write placeholders such as '... unchanged ...'.",
+    "- Use a DELETE block (no body, no ===END===) only to delete a file.",
+    "- Repository-relative paths with forward slashes only. Never touch .git/ or the handoff document itself.",
+    "- Do not output a unified diff or patch. Do not run commands that change anything.",
+    "- Keep the change minimal: prefer touching few files and do not reformat unrelated lines.",
+    "- Any text outside the blocks will cause the proposal to be rejected.",
   ].join("\n");
 }
 
@@ -86,11 +93,22 @@ async function proposeViaWorktree(
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.copyFileSync(file.absPath, dest);
 
-    const result = await runCodexExecInWorktree({
-      worktreePath: wt.path,
-      prompt: buildWorktreeEditPrompt(gitRel),
+    // Codex runs READ-ONLY against the worktree snapshot (the only codex-exec
+    // mode whose behavior is reliable on native Windows) and returns complete
+    // file contents in the strict block format.
+    const result = await runCodexExecReadOnly({
+      workspaceRoot: wt.path,
+      prompt: buildFileBlockPrompt(gitRel),
     });
     throwOnCodexFailure(result);
+
+    const message = extractFinalAgentMessage(result.stdout);
+    const blocks = parseFileBlocks(message, {
+      limits: defaultRewriteLimits(),
+      forbiddenPaths: [gitRel],
+    });
+    // The BRIDGE materializes the proposal in the worktree (no Codex writes).
+    applyBlocksToWorktree(wt.path, blocks);
 
     await assertWorktreeIntact(wt);
     await cleanupHandoffCopy(workspaceRoot, wt.path, gitRel);

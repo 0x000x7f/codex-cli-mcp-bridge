@@ -127,24 +127,11 @@ export async function runCodexExecReadOnly(opts: {
   });
 }
 
-/**
- * Workspace-write execution — ONLY for a disposable temp worktree (Strategy B).
- * The signature ties workspace-write to a worktree path on purpose: there is no
- * way to run codex with write access against the real workspace through this
- * module.
- */
-export async function runCodexExecInWorktree(opts: {
-  worktreePath: string;
-  prompt: string;
-  timeoutMs?: number;
-}): Promise<CodexRunResult> {
-  return runCodexExec({
-    cwd: opts.worktreePath,
-    sandbox: "workspace-write",
-    prompt: opts.prompt,
-    timeoutMs: opts.timeoutMs,
-  });
-}
+// NOTE (Strategy B′): every codex invocation in this bridge is read-only.
+// Agent-loop writes are blocked on native Windows in all sandbox
+// configurations (old --sandbox flags silently downgrade to read-only; new
+// permission profiles refuse apply_patch/shell writes) — see docs/design.md §9.
+// Writes are performed by the bridge itself against a disposable worktree.
 
 /** Kill the whole process tree — codex.js spawns a native binary child. */
 function killTree(pid: number | undefined): void {
