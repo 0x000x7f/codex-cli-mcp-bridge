@@ -287,6 +287,41 @@ review ヒントとして出す。`窶` 等は合法な日本語文字でもあ�
 native Windows の read-path 問題を避けたい contributor 向けに、claude-code-setup.md で
 WSL2 運用（Linux サンドボックス実装が使われる）を回避策として案内する。
 
+## 11. Phase 4 実装記録（codex_review_patch — 第三者レビュー・任意レイヤー）
+
+Codex A が作った diff を、別の Codex に read-only で第三者レビューさせる**任意の追加レイヤー**。
+**安全の中核ではなく、レビュー信号を増やす補助**。apply の中核（human review ＋ diff_sha256 ＋
+base_head ＋ clean tree ＋ codex_apply）は一切変えない。
+
+### 位置づけと限界
+
+- **助言のみ**: verdict（approve / request changes / needs human attention）は人間/メイン Claude が
+  読む参考。codex_apply の `approval=true` の代替には**ならない**
+- **相関故障の限界**: Codex が Codex の出力をレビューする構成。native Windows では reviewer も
+  同じ PowerShell CP932 read-path を通りうるため、**mojibake 判定は低信頼**。人間レビュー＋WSL2 が
+  本丸（プロンプト・docs に明記）
+- 役割分担: codex_review_patch = patch-level（scope creep・過大変更・test不足・security smell）／
+  Claude reviewer = intent/architecture
+
+### 仕様
+
+`codex_review_patch(diff, expected_sha256, base_head, review_focus?)`:
+
+1. `validateGitPatch(diff)`（Git 形式・サイズ上限）
+2. `diffSha256(diff) === expected_sha256`（レビュー対象を propose の exact diff に束縛）
+3. 現在 HEAD === `base_head`
+4. `runCodexExecReadOnly` で read-only レビュー（固定セクションの Markdown を返す）
+
+固定セクション: Blocking issues / Non-blocking issues / Scope creep / Oversized rewrite /
+Test suggestions / Security risks / Non-ASCII・mojibake risk（低信頼の注記つき）/ Verdict。
+
+### 不可侵の制約（実装）
+
+- ファイル変更しない・`codex_apply` を呼ばない・apply 用 approval/sha256 を生成しない・
+  stage/commit しない・verdict による自動 apply をしない
+- tools/list は4つになるが、**mutating tool は依然 codex_apply ただ1つ**
+- ログは files 数・bytes のみ（diff 本文を出さない）
+
 ### 実走検証の結果と運用知見（2026-06-12）
 
 - **成功経路**: fixture HANDOFF を入力に codex_plan を実走し、4セクション構成の計画のみが返却され

@@ -31,6 +31,7 @@ Claude Code から Codex CLI を MCP ツールとして呼び出し、
 | `codex_plan(handoff_path)` | 1 | HANDOFF 文書を Codex に読ませ、要約と実装計画を返す | ファイル変更の一切 |
 | `codex_propose_patch(handoff_path)` | 2 | 検証済み unified diff 案＋`diff_sha256`/`base_head`/レビューヒントを返す（Git 形式・パス guard・上限 → `git apply --check`） | working tree への適用 |
 | `codex_apply(diff, approval, expected_sha256, base_head)` | 3 | レビュー済み exact diff を working tree に適用（Codex は呼ばない・hash/HEAD 束縛・clean tree 必須） | 承認なしの適用・stage・commit |
+| `codex_review_patch(diff, expected_sha256, base_head, review_focus?)` | 4 | 別 Codex に diff を read-only 第三者レビューさせ written verdict を返す（**助言のみ**・diff を hash/HEAD で束縛） | ファイル変更・apply・承認の代替 |
 
 ## Roadmap
 
@@ -39,7 +40,8 @@ Claude Code から Codex CLI を MCP ツールとして呼び出し、
 - [x] Phase 2: `codex_propose_patch`（diff 提案のみ）— 当初 Strategy A（手書き diff）で実装
 - [x] Phase 2B′: Strategy B′（temp worktree ＋ bridge-applied writes）へ移行 — 既存ファイル変更の `apply --check` 通過率を 29% → 100% に改善（[field test](docs/ops/phase2-validation-log.md)）。native Windows の codex-exec 書き込みブロックを迂回
 - [x] Phase 3: `codex_apply`（review-first の承認ゲート）— Codex を呼ばず、人間がレビューした exact diff のみを適用。`approval=true` ＋ diff の SHA-256 ＋ base HEAD で束縛し、clean tree 必須・適用直前に再検証・working tree のみ（stage/commit しない）。非ASCII記号の文字化けは propose の review ヒント表示＋人間レビューで吸収
-- [ ] Phase 3 運用検証の積み増し（propose→apply 往復の field test を複数）
+- [x] Phase 4: `codex_review_patch`（第三者レビュー・read-only・**任意レイヤー**）— 別の Codex に diff を read-only でレビューさせ written verdict を返す。**助言のみ**で apply ゲートには非関与（mutating tool は `codex_apply` のまま）。mojibake 判定は相関故障のため低信頼（人間レビューが本丸）
+- [ ] Phase 3/4 運用検証の積み増し（propose→review→apply 往復の field test を複数）
 - [ ] クロスエージェント自動レビューループ
 
 ## ドキュメント

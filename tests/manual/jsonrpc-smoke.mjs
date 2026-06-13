@@ -60,12 +60,15 @@ send({ jsonrpc: "2.0", method: "notifications/initialized" });
 const tools = await request("tools/list", {});
 console.log("tools:", tools.tools.map((t) => t.name).join(", "));
 
-// Round-trip mode: propose, then apply the reviewed diff.
-//   node tests/manual/jsonrpc-smoke.mjs <handoff_path> apply
+// Round-trip modes: propose, then apply / review the proposed diff.
+//   node tests/manual/jsonrpc-smoke.mjs <handoff_path> apply    -> propose then codex_apply
+//   node tests/manual/jsonrpc-smoke.mjs <handoff_path> review   -> propose then codex_review_patch
 const roundTrip = process.argv[3] === "apply";
+const reviewTrip = process.argv[3] === "review";
 
 if (handoffPath) {
-  const callTool = process.argv[3] === "propose" || roundTrip ? "codex_propose_patch" : toolName;
+  const callTool =
+    process.argv[3] === "propose" || roundTrip || reviewTrip ? "codex_propose_patch" : toolName;
   console.log(`calling ${callTool}(${handoffPath}) ...`);
   const t0 = Date.now();
   const res = await request("tools/call", {
@@ -80,22 +83,23 @@ if (handoffPath) {
   console.log(text);
   console.log(`--- end (elapsed_ms: ${elapsed}, isError: ${res.isError ?? false}) ---`);
 
-  if (roundTrip && !res.isError) {
+  if ((roundTrip || reviewTrip) && !res.isError) {
     const sha = /diff_sha256: ([0-9a-f]{64})/.exec(text)?.[1];
     const head = /base_head: ([0-9a-f]+)/.exec(text)?.[1];
     const diffMatch = /```diff\n([\s\S]*?)```/.exec(text);
     const diff = diffMatch ? `${diffMatch[1].replace(/\n$/, "")}\n` : undefined;
     if (sha && head && diff) {
-      console.log("\ncalling codex_apply(...) with reviewed diff ...");
-      const ar = await request("tools/call", {
-        name: "codex_apply",
-        arguments: { diff, approval: true, expected_sha256: sha, base_head: head },
-      });
-      console.log("apply isError:", ar.isError ?? false);
-      console.log("--- apply result ---");
-      console.log(ar.content?.[0]?.text ?? "(no text)");
+      const next = reviewTrip ? "codex_review_patch" : "codex_apply";
+      const nextArgs = reviewTrip
+        ? { diff, expected_sha256: sha, base_head: head }
+        : { diff, approval: true, expected_sha256: sha, base_head: head };
+      console.log(`\ncalling ${next}(...) with the proposed diff ...`);
+      const nr = await request("tools/call", { name: next, arguments: nextArgs });
+      console.log(`${next} isError:`, nr.isError ?? false);
+      console.log(`--- ${next} result ---`);
+      console.log(nr.content?.[0]?.text ?? "(no text)");
     } else {
-      console.log("could not parse propose result for apply (sha/head/diff missing)");
+      console.log("could not parse propose result (sha/head/diff missing)");
     }
   }
 }

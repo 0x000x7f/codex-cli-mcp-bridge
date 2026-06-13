@@ -4,6 +4,7 @@ import { z } from "zod";
 import { codexPlan } from "./tools/codex-plan.js";
 import { codexProposePatch } from "./tools/codex-propose-patch.js";
 import { codexApply } from "./tools/codex-apply.js";
+import { codexReviewPatch } from "./tools/codex-review-patch.js";
 import { CodexOutputParseError } from "./codex/parse-output.js";
 import { DiffExtractionError } from "./patch/extract-diff.js";
 import { ApplyCheckError } from "./patch/apply-check.js";
@@ -12,11 +13,12 @@ const RAW_OUTPUT_LIMIT = 4000;
 
 const workspaceRoot = process.env.CODEX_BRIDGE_WORKSPACE ?? process.cwd();
 
-const server = new McpServer({ name: "codex-cli-mcp-bridge", version: "0.5.0" });
+const server = new McpServer({ name: "codex-cli-mcp-bridge", version: "0.6.0" });
 
-// Phase 3: codex_plan (read-only), codex_propose_patch (read-only diff
-// proposal), and codex_apply (the ONLY mutating tool — applies a reviewed,
-// exact diff with explicit approval). See docs/design.md for phase boundaries.
+// Tools: codex_plan (read-only), codex_propose_patch (read-only diff proposal),
+// codex_apply (the ONLY mutating tool — applies a reviewed, exact diff with
+// explicit approval), and codex_review_patch (read-only, advisory third-party
+// review — never gates apply). See docs/design.md for phase boundaries.
 server.registerTool(
   "codex_plan",
   {
@@ -154,8 +156,55 @@ server.registerTool(
   },
 );
 
+server.registerTool(
+  "codex_review_patch",
+  {
+    title: "Third-party review of a proposed patch (read-only, advisory)",
+    description:
+      "Have an independent Codex pass review a proposed diff read-only and return a written " +
+      "review (blocking/non-blocking issues, scope creep, oversized changes, test suggestions, " +
+      "security risks, a low-confidence non-ASCII/mojibake note, and an advisory verdict). " +
+      "It modifies nothing, never calls codex_apply, and its verdict does NOT authorize any " +
+      "apply — a human still approves. Pass the diff, diff_sha256, and base_head from " +
+      "codex_propose_patch so the review is bound to that exact diff.",
+    inputSchema: {
+      diff: z.string().describe("The exact unified diff returned by codex_propose_patch"),
+      expected_sha256: z.string().describe("diff_sha256 from the codex_propose_patch result"),
+      base_head: z.string().describe("base_head from the codex_propose_patch result"),
+      review_focus: z
+        .string()
+        .optional()
+        .describe("Optional extra aspect to emphasize in the review"),
+    },
+  },
+  async ({ diff, expected_sha256, base_head, review_focus }) => {
+    try {
+      const r = await codexReviewPatch(workspaceRoot, {
+        diff,
+        expected_sha256,
+        base_head,
+        review_focus,
+      });
+      const text = [
+        `Third-party review of the proposed diff (files: ${r.files.join(", ")}).`,
+        "ADVISORY ONLY — this does not approve or apply anything; a human still decides.",
+        "",
+        r.review,
+      ].join("\n");
+      return { content: [{ type: "text" as const, text }] };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        content: [{ type: "text" as const, text: `codex_review_patch failed: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
 await server.connect(new StdioServerTransport());
 // stdout is the MCP transport — all logging goes to stderr.
 console.error(
-  `[codex-cli-mcp-bridge] ready (workspace=${workspaceRoot}, tools=[codex_plan, codex_propose_patch, codex_apply])`,
+  `[codex-cli-mcp-bridge] ready (workspace=${workspaceRoot}, ` +
+    `tools=[codex_plan, codex_propose_patch, codex_apply, codex_review_patch])`,
 );
