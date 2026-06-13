@@ -22,6 +22,20 @@ MCP ツール引数として `approval` を受け取る際、truthy な文字列
 誤って承認扱いする事故を防ぐため、JSON Schema で `"type": "boolean"` を強制し、
 ブリッジ実装側でも `approval === true` の厳密比較のみを承認と見なす。
 
+### codex_apply（唯一の mutating tool・Phase 3）
+
+`codex_apply` は本体 workspace を変更する唯一のツール。次を厳守する（実装は fail-closed）:
+
+- **Codex を呼ばない**: codex_propose_patch が返した（人間レビュー済みの）exact diff を
+  適用するだけ。再生成しない（承認した diff と適用 diff の一致を保証）
+- `approval === true` 必須（上記 strict boolean）
+- `expected_sha256`（diff の SHA-256）と `base_head`（review 時の HEAD）を**必須引数**とし、
+  diff hash 不一致・HEAD 移動を拒否（人間が承認した exact diff/状態に束縛）
+- clean tree 必須（review 時状態の保証＋rollback 可能性）
+- 適用直前に `validateGitPatch` ＋ `git apply --check` を再実行
+- working tree のみに適用し、**stage も commit もしない**（`--3way` も使わない）
+- 失敗時は touched files 限定で rollback。`git checkout -- .` は使わない
+
 ## 2. Workspace guard（作業ディレクトリ制限）
 
 - ブリッジは起動時に許可ディレクトリ（対象リポジトリのルート）を1つ受け取る

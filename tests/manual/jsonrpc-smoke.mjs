@@ -60,19 +60,44 @@ send({ jsonrpc: "2.0", method: "notifications/initialized" });
 const tools = await request("tools/list", {});
 console.log("tools:", tools.tools.map((t) => t.name).join(", "));
 
+// Round-trip mode: propose, then apply the reviewed diff.
+//   node tests/manual/jsonrpc-smoke.mjs <handoff_path> apply
+const roundTrip = process.argv[3] === "apply";
+
 if (handoffPath) {
-  console.log(`calling ${toolName}(${handoffPath}) ...`);
+  const callTool = process.argv[3] === "propose" || roundTrip ? "codex_propose_patch" : toolName;
+  console.log(`calling ${callTool}(${handoffPath}) ...`);
   const t0 = Date.now();
   const res = await request("tools/call", {
-    name: toolName,
+    name: callTool,
     arguments: { handoff_path: handoffPath },
   });
   const elapsed = Date.now() - t0;
   console.log(`elapsed_ms: ${elapsed}`);
   console.log("isError:", res.isError ?? false);
   console.log("--- result ---");
-  console.log(res.content?.[0]?.text ?? "(no text)");
+  const text = res.content?.[0]?.text ?? "(no text)";
+  console.log(text);
   console.log(`--- end (elapsed_ms: ${elapsed}, isError: ${res.isError ?? false}) ---`);
+
+  if (roundTrip && !res.isError) {
+    const sha = /diff_sha256: ([0-9a-f]{64})/.exec(text)?.[1];
+    const head = /base_head: ([0-9a-f]+)/.exec(text)?.[1];
+    const diffMatch = /```diff\n([\s\S]*?)```/.exec(text);
+    const diff = diffMatch ? `${diffMatch[1].replace(/\n$/, "")}\n` : undefined;
+    if (sha && head && diff) {
+      console.log("\ncalling codex_apply(...) with reviewed diff ...");
+      const ar = await request("tools/call", {
+        name: "codex_apply",
+        arguments: { diff, approval: true, expected_sha256: sha, base_head: head },
+      });
+      console.log("apply isError:", ar.isError ?? false);
+      console.log("--- apply result ---");
+      console.log(ar.content?.[0]?.text ?? "(no text)");
+    } else {
+      console.log("could not parse propose result for apply (sha/head/diff missing)");
+    }
+  }
 }
 
 server.kill();

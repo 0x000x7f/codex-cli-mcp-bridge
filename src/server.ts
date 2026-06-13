@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { codexPlan } from "./tools/codex-plan.js";
 import { codexProposePatch } from "./tools/codex-propose-patch.js";
+import { codexApply } from "./tools/codex-apply.js";
 import { CodexOutputParseError } from "./codex/parse-output.js";
 import { DiffExtractionError } from "./patch/extract-diff.js";
 import { ApplyCheckError } from "./patch/apply-check.js";
@@ -11,11 +12,11 @@ const RAW_OUTPUT_LIMIT = 4000;
 
 const workspaceRoot = process.env.CODEX_BRIDGE_WORKSPACE ?? process.cwd();
 
-const server = new McpServer({ name: "codex-cli-mcp-bridge", version: "0.4.0" });
+const server = new McpServer({ name: "codex-cli-mcp-bridge", version: "0.5.0" });
 
-// Phase 2 exposes exactly two read-only tools: codex_plan and
-// codex_propose_patch. codex_apply (mutation) is Phase 3 and intentionally
-// absent — see docs/design.md (phase boundaries).
+// Phase 3: codex_plan (read-only), codex_propose_patch (read-only diff
+// proposal), and codex_apply (the ONLY mutating tool — applies a reviewed,
+// exact diff with explicit approval). See docs/design.md for phase boundaries.
 server.registerTool(
   "codex_plan",
   {
@@ -67,10 +68,23 @@ server.registerTool(
   async ({ handoff_path }) => {
     try {
       const p = await codexProposePatch(workspaceRoot, handoff_path);
+      const review: string[] = [];
+      if (p.hints.nonAsciiChangedLines > 0) {
+        review.push(
+          `REVIEW: ${p.hints.nonAsciiChangedLines} changed line(s) contain non-ASCII characters — check for mojibake before approving.`,
+        );
+      }
+      if (p.hints.largeRewriteFiles.length > 0) {
+        review.push(`REVIEW: near-full rewrite of ${p.hints.largeRewriteFiles.join(", ")}.`);
+      }
       const text = [
         `files (${p.files.length}): ${p.files.join(", ")}`,
         `additions: +${p.additions}, deletions: -${p.deletions}`,
         "git apply --check: passed (patch NOT applied)",
+        `diff_sha256: ${p.diffSha256}`,
+        `base_head: ${p.baseHead}`,
+        "To apply after review: codex_apply(diff, approval=true, expected_sha256=diff_sha256, base_head=base_head)",
+        ...review,
         "",
         "```diff",
         p.diff.replace(/\n$/, ""),
@@ -96,8 +110,51 @@ server.registerTool(
   },
 );
 
+server.registerTool(
+  "codex_apply",
+  {
+    title: "Apply a reviewed patch (mutating)",
+    description:
+      "Apply a reviewed, exact diff to the working tree. This is the ONLY tool that mutates " +
+      "the workspace. It does NOT call Codex — pass the diff returned by codex_propose_patch " +
+      "after a human has reviewed it. Requires approval=true plus expected_sha256 and base_head " +
+      "(from the propose result). Fail-closed: rejects on hash mismatch, moved HEAD, dirty tree, " +
+      "or a diff that does not apply. Applies to the working tree only — does not stage or commit.",
+    inputSchema: {
+      diff: z.string().describe("The exact unified diff returned by codex_propose_patch"),
+      approval: z
+        .boolean()
+        .describe("Must be exactly true; the human reviewer's explicit approval of this diff"),
+      expected_sha256: z
+        .string()
+        .describe("diff_sha256 from the codex_propose_patch result (binds approval to the diff)"),
+      base_head: z
+        .string()
+        .describe("base_head from the codex_propose_patch result (binds approval to the HEAD)"),
+    },
+  },
+  async ({ diff, approval, expected_sha256, base_head }) => {
+    try {
+      const r = await codexApply(workspaceRoot, { diff, approval, expected_sha256, base_head });
+      const text = [
+        "Applied to the working tree (NOT staged, NOT committed).",
+        `files (${r.files.length}): ${r.files.join(", ")}`,
+        `additions: +${r.additions}, deletions: -${r.deletions}`,
+        "Review with `git diff`, then `git add`/`git commit` yourself.",
+      ].join("\n");
+      return { content: [{ type: "text" as const, text }] };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        content: [{ type: "text" as const, text: `codex_apply rejected: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
 await server.connect(new StdioServerTransport());
 // stdout is the MCP transport — all logging goes to stderr.
 console.error(
-  `[codex-cli-mcp-bridge] ready (workspace=${workspaceRoot}, tools=[codex_plan, codex_propose_patch])`,
+  `[codex-cli-mcp-bridge] ready (workspace=${workspaceRoot}, tools=[codex_plan, codex_propose_patch, codex_apply])`,
 );

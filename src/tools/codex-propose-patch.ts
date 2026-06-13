@@ -16,6 +16,7 @@ import { cleanupHandoffCopy, collectWorktreeDiff } from "../worktree/collect-dif
 import { runGit } from "../worktree/run-git.js";
 import { parseFileBlocks, defaultRewriteLimits } from "../patch/parse-file-blocks.js";
 import { applyBlocksToWorktree } from "../worktree/apply-blocks.js";
+import { diffSha256, nonAsciiReviewHints, type NonAsciiReviewHints } from "../patch/diff-summary.js";
 
 const STDERR_LIMIT = 2000;
 
@@ -24,6 +25,11 @@ export interface ProposedPatch {
   files: string[];
   additions: number;
   deletions: number;
+  /** SHA-256 of the exact diff — pass back to codex_apply as expected_sha256. */
+  diffSha256: string;
+  /** Workspace HEAD the diff was produced against — pass back as base_head. */
+  baseHead: string;
+  hints: NonAsciiReviewHints;
 }
 
 export async function codexProposePatch(
@@ -143,7 +149,13 @@ async function proposeViaWorktree(
     throw new Error("the handoff document leaked into the proposed diff — rejected");
   }
   await gitApplyCheck(workspaceRoot, diff);
-  return { diff, ...summary };
+  return {
+    diff,
+    ...summary,
+    diffSha256: diffSha256(diff),
+    baseHead: wt.head,
+    hints: nonAsciiReviewHints(diff, summary.files),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -193,7 +205,14 @@ async function proposeViaReadonly(
   const diff = extractSingleDiffFence(message);
   const summary: PatchSummary = validateGitPatch(diff, defaultLimits());
   await gitApplyCheck(workspaceRoot, diff);
-  return { diff, ...summary };
+  const baseHead = (await runGit(["-C", workspaceRoot, "rev-parse", "HEAD"])).stdout.trim();
+  return {
+    diff,
+    ...summary,
+    diffSha256: diffSha256(diff),
+    baseHead,
+    hints: nonAsciiReviewHints(diff, summary.files),
+  };
 }
 
 /* ------------------------------------------------------------------ */

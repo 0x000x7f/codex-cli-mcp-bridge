@@ -6,6 +6,16 @@
   （bridge は認証情報を保持せず、Codex CLI 自身の認証に委譲する）
 - Node.js 20+ / `npm install` と `npm run build` が完了していること
 
+## Windows と Unicode fidelity（推奨）
+
+native Windows では、Codex の shell wrapper が PowerShell 5.1 の `Get-Content` を介する経路で
+BOM なし UTF-8 ファイルを ANSI（ja-JP では CP932）として読むため、em dash（—）などの
+非ASCII記号が文字化けすることがある（OpenAI codex issue #23044 / #15422）。`codex_propose_patch`
+の diff レビューで検出できるが、**Unicode fidelity が重要な場合は WSL2 上での運用を推奨する**
+（WSL2 では Linux サンドボックス実装が使われ、この read-path 問題を回避できる。OpenAI の
+Windows 向け docs も WSL2 を案内している）。native Windows のままでも、Phase 3 の `codex_apply`
+は人間がレビューした exact diff のみを適用するため、文字化けは承認前に検出・排除できる。
+
 ## 方法1: プロジェクトスコープ（推奨・自動）
 
 このリポジトリ直下の `.mcp.json` により、**このリポジトリを開いた Claude Code セッション**では

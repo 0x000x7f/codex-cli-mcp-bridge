@@ -229,6 +229,62 @@ Strategy B′ にピボットした。diff は Git が生成するため context
 新規ファイル作成・小さな削除では A も有効（軽量）と field test で実証済み。
 自動ルーティング・A→B′ フォールバックは将来課題。
 
+## 10. Phase 3 実装記録（codex_apply — review-first の承認ゲート）
+
+Phase 2B′ field test で、B′ の diff は構造的に正しい（apply --check 100%）が、Codex の
+ファイル全文再生成が非ASCII記号を確率的に文字化けさせ、その行も apply --check を通って
+しまうことが判明した（content fidelity の限界）。deep-research レポートにより、根本原因は
+PowerShell 5.1 の `Get-Content` が BOM なし UTF-8 を ANSI（ja-JP=CP932）で読む read-path
+問題（OpenAI issue #23044 / #15422）であり、プロンプトでは直せないと確定した。
+
+→ Phase 3 は「自動で内容の正しさを判定する」のではなく、**人間がレビューした exact diff
+だけに適用を許す review-first の承認ゲート**として実装した。
+
+### 中核設計: codex_apply は Codex を呼ばない
+
+`codex_apply(diff, approval, expected_sha256, base_head)` は決定的な適用ツール。
+codex_propose_patch が返した（人間レビュー済みの）diff をそのまま受け取り適用する。
+内部で Codex を再実行しない（非決定性により「人間が見た diff」と「適用される diff」が
+乖離し承認が無効化されるため）。**本体 workspace を変更する唯一のツール**。
+
+review-first フロー:
+
+```text
+codex_propose_patch → diff ＋ diff_sha256 ＋ base_head ＋ 非ASCII review ヒント を返す
+→ メイン会話の Claude がユーザーに diff を提示
+→ ユーザーが内容（文字化け含む）を確認して承認
+→ codex_apply(diff, approval=true, expected_sha256, base_head)
+```
+
+### fail-closed チェック（この順・1つでも失敗で中断・tree 不変）
+
+1. `approval === true` のみ（`"true"`/`"yes"`/`1`/truthy・オブジェクトは全拒否）
+2. `expected_sha256` / `base_head` の存在確認（**両者とも必須**。空なら拒否）
+3. diff の SHA-256 が `expected_sha256` と一致（人間が見た diff と適用 diff の束縛）
+4. 現在 HEAD が `base_head` と一致（review 後に HEAD が動いたら無効）
+5. clean tree（`git status --porcelain` が空。review 時状態の保証＋rollback 可能性）
+6. `validateGitPatch`（Git形式・path guard・上限）＋ `git apply --check` 再実行
+7. `git apply -`（working tree のみ・`--3way` なし・**stage も commit もしない**）
+8. 適用結果（変更ファイル・行数）を報告。人間が `git diff` 確認後に自分で add/commit
+
+### rollback（`git checkout -- .` 一発に依存しない）
+
+`git apply` は原子的＋clean tree 前提なので通常は失敗時 tree 不変。万一 dirty が残ったら
+**diff から抽出した touched files に限定**して復旧（tracked は `git checkout -- <path>`、
+新規予定ファイルは削除）。`git checkout -- .` は無関係な untracked を消すため使わない。
+復旧不能時は重大エラーとして status と手動復旧手順を返す。
+
+### 非ASCII変更の可視化（判定でなく提示）
+
+codex_propose_patch の返却に「非ASCII を含む変更行数」「near-full rewrite ファイル」を
+review ヒントとして出す。`窶` 等は合法な日本語文字でもあり自動 mojibake 判定は誤検知が
+多いため、**safe を言い切らず人間レビューの注意を高リスク箇所へ向ける**支援に徹する。
+
+### Windows / Unicode fidelity
+
+native Windows の read-path 問題を避けたい contributor 向けに、claude-code-setup.md で
+WSL2 運用（Linux サンドボックス実装が使われる）を回避策として案内する。
+
 ### 実走検証の結果と運用知見（2026-06-12）
 
 - **成功経路**: fixture HANDOFF を入力に codex_plan を実走し、4セクション構成の計画のみが返却され

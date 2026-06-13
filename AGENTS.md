@@ -3,18 +3,20 @@
 ## Purpose
 
 This repository is an experimental MCP bridge that lets Claude Code invoke Codex CLI
-through staged, safety-gated tools. Phases 1 and 2 are implemented: `src/` contains a
-TypeScript MCP server exposing exactly two read-only tools — `codex_plan` (planning) and
-`codex_propose_patch` (Git unified diff proposal, validated with `git apply --check`,
-never applied).
+through staged, safety-gated tools. Phases 1–3 are implemented: `src/` contains a
+TypeScript MCP server exposing three tools — `codex_plan` (read-only planning),
+`codex_propose_patch` (read-only Git unified diff proposal, validated with
+`git apply --check`, never applied), and `codex_apply` (the ONLY mutating tool — applies a
+reviewed, exact diff to the working tree).
 
 ## Rules for coding agents
 
-- Do not add `codex_apply` (or any tool that mutates the working tree) unless the task
-  explicitly starts Phase 3. The MCP tools/list must keep exposing only `codex_plan` and
-  `codex_propose_patch` until then.
+- `codex_apply` must NOT call Codex. It deterministically applies a diff that
+  codex_propose_patch produced and a human approved, requiring `approval === true` plus
+  `expected_sha256` and `base_head`. It applies to the working tree only and never stages
+  or commits. Do not weaken these fail-closed checks.
 - `codex_propose_patch` must never apply, commit, or stage the proposed patch — it only
-  returns validated diff text.
+  returns validated diff text plus its sha256 / base_head / review hints.
 - Do not modify unrelated files.
 - Keep diffs small and reviewable.
 - Do not assume access to previous chat context; everything you need must be in this
