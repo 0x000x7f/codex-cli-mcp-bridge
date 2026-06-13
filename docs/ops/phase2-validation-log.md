@@ -64,3 +64,61 @@ Phase 3（適用を伴う段階）へ進む前に、`codex_propose_patch` を実
 
 **判定（2026-06-13）: Phase 3 はブロック。次のステップは Strategy B（temp worktree 方式）の
 設計・実装による diff 品質の改善**（既存ファイル変更で check 通過率 70% 以上が再開条件）。
+
+---
+
+## Phase 2B′ field test（Strategy B′ = bridge-applied writes、v0.4.0）
+
+Strategy B は native Windows の codex exec 書き込みブロックにより断念し、
+**B′（Codex は read-only で完全ファイル内容を出力 → bridge が worktree に書き込み → git diff 採取）**
+にピボット（design.md §9）。Phase 2A で失敗した4ケースを含む6件を再戦。
+
+| No | Target | Handoff | JA? | 種別 | Result | elapsed | Tree clean? | apply --check | Rating | Issues |
+|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | bridge | propose-ja-edit | yes | 既存変更 | success | 74s | yes | **passed** | A | 日本語 context 正確・追加のみ・化けなし |
+| B2 | bridge | propose-agents-note | no | 既存変更 | success | 37s | yes | **passed** | **D** | **既存の em dash `—` が `窶・` に文字化けして変更行に混入**（apply --check は通る） |
+| B3 | bridge | propose-glossary | no | 新規作成 | success | 38s | yes | passed | A | 回帰確認 |
+| B4 | bridge | propose-delete | no | 削除 | success | 19s | yes | passed | A | 回帰確認 |
+| B5 | bridge | propose-two-files | 混在 | 2ファイル変更 | success | 88s | yes | **passed** | A | README＋setup.md（日本語含む）・追加のみ・化けなし |
+| B6 | workflow | propose-usage-gitignore-note | yes | 別repo×既存変更 | success | 76s | yes | **passed** | A | 日本語 context 正確・追加のみ・化けなし |
+
+集計: 6件。**A: 5 / D: 1 / E: 0**。**apply --check 通過率 6/6 = 100%**（Phase 2A の 29% から激変）。
+全件で working tree 変更ゼロ・temp worktree 残骸なし・HEAD 不変・tools/list は2つのみ。
+
+### Phase 2A vs 2B′（同一の既存ファイル変更4ケース）
+
+| ケース | 2A（手書き diff） | 2B′（bridge-applied） |
+|---|---|---|
+| JA 既存変更 | ❌ patch does not apply | ✅ A |
+| EN 既存変更 | ❌ patch does not apply | ⚠ D（apply 通るが em dash 化け） |
+| 2ファイル変更 | ❌ corrupt patch | ✅ A |
+| 別repo×JA | ❌ corrupt patch | ✅ A |
+
+→ **diff の構造破壊（context/hunk ズレ）は B′ で完全に解消**（Git が diff を生成するため原理的に正確）。
+
+### 新発見と運用上の重要な制約
+
+1. **B′ は diff 構造は正確だが、内容の文字化けまでは保証しない**: Codex がファイル全体を
+   再生成する際、既存の非ASCII**記号**（em dash `—` U+2014）が確率的に文字化けする
+   （B2 で発生、B1/B5/B6 の日本語ひらがな・漢字では未発生）。化けた行は変更行として
+   diff に出るため `apply --check` は通ってしまう。**apply --check 通過 = 構造的に正しい、
+   だが内容の正しさ（文字化けなし）は保証しない**
+2. **安全網は機能**: 文字化けは diff に `-`/`+` として可視化され、人間レビューで検出可能
+   （実際この field test でも即座に検出できた）。working tree は全件不変
+3. **運用ルール（決定）**: B′ の出力 diff は**必ず人間がレビューし、特に非ASCII記号の
+   文字化けを確認する**。自動適用（Phase 3）に進む前にこの検出を担保する設計が必須
+4. 文字化けの自動検出は初期実装では見送り（`窶` 等は合法な日本語文字でもあり誤検知が多い。
+   堅牢な mojibake 検出は別課題）。レビュー必須の運用で対処
+
+### Phase 3 着手ゲート 再評価
+
+- [x] codex_propose_patch 実走 5件以上（既存ファイル変更・日本語含む）— B′ で6件
+- [x] すべての実走で working tree 変更ゼロ
+- [x] **apply --check 通過率が運用に耐える水準（100% ≥ 70%）— Strategy B′ で達成**
+- [x] tools/list が codex_plan / codex_propose_patch の2つのみ
+- [ ] **B′ 固有リスク（非ASCII記号の文字化け）への対処方針が Phase 3 設計に織り込まれている**
+- [ ] Phase 3 の承認ゲート設計（approval 厳密判定・適用前 clean tree 必須・rollback）レビュー
+
+**判定: 構造的 diff 品質ゲートは通過。ただし Phase 3（自動適用）の前に、文字化け検出を
+レビュー必須として担保する設計が条件。** B′ の diff はそのままでは「apply 可能」だが
+「内容が正しい」とは限らないため、適用の自動化は文字化け対策とセットで設計する。

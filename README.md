@@ -34,9 +34,9 @@ Claude Code から Codex CLI を MCP ツールとして呼び出し、
 
 - [x] Phase 0: 設計・セキュリティモデル・既存方式との比較
 - [x] Phase 1: `codex_plan`（読み取り専用ツール）の実装と検証 — 実走前後で working tree 不変を確認済み
-- [x] Phase 2: `codex_propose_patch`（diff 提案のみ・Strategy A = read-only のままテキスト diff 生成）— `apply --check` passed の実走で working tree 不変を確認済み
-- [ ] Phase 2 運用検証（field test 5件以上・check 通過率の実測 → [docs/ops/phase2-validation-log.md](docs/ops/phase2-validation-log.md)）
-- [ ] Phase 3: `codex_apply`（承認ゲート付き適用）
+- [x] Phase 2: `codex_propose_patch`（diff 提案のみ）— 当初 Strategy A（手書き diff）で実装
+- [x] Phase 2B′: Strategy B′（temp worktree ＋ bridge-applied writes）へ移行 — 既存ファイル変更の `apply --check` 通過率を 29% → 100% に改善（[field test](docs/ops/phase2-validation-log.md)）。native Windows の codex-exec 書き込みブロックを迂回
+- [ ] Phase 3: `codex_apply`（承認ゲート付き適用）— B′ 固有の非ASCII記号文字化けリスクへの対処とセットで設計
 - [ ] クロスエージェント自動レビューループ
 
 ## ドキュメント
